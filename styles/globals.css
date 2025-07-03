@@ -2,6 +2,25 @@
 @tailwind components;
 @tailwind utilities;
 
+html,
 body {
-  @apply bg-gradient-to-br from-blue-500 to-indigo-700 text-slate-800;
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Oxygen,
+    Ubuntu, Cantarell, Fira Sans, Droid Sans, Helvetica Neue, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: linear-gradient(135deg, #3b82f6, #4f46e5);
+  color: #1e293b;
+  min-height: 100vh;
 }
