@@ -9,6 +9,12 @@ const SOCIAL_PLATFORMS = [
   'linkedin', 'facebook', 'twitter', 'instagram', 'youtube', 'tiktok', 'pinterest'
 ];
 
+function getEmptySocialMedia() {
+  const obj = {};
+  SOCIAL_PLATFORMS.forEach(p => obj[p] = []);
+  return obj;
+}
+
 function getAbsoluteUrl(href, baseUrl) {
   try {
     return new URL(href, baseUrl).href;
@@ -66,7 +72,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         generalEmails: [],
         generalPhones: [],
-        socialMedia: {},
+        socialMedia: getEmptySocialMedia(),
         contactForms: [],
         people: []
       });
@@ -222,7 +228,7 @@ export default async function handler(req, res) {
       error: error.message,
       generalEmails: [],
       generalPhones: [],
-      socialMedia: {},
+      socialMedia: getEmptySocialMedia(),
       contactForms: [],
       people: []
     });
