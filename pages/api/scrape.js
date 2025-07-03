@@ -32,9 +32,32 @@ function cleanEmail(email) {
 function cleanPhone(phone) {
   const cleaned = phone.replace(/[^\d+()-.\s]/g, '').trim();
   const digitsOnly = cleaned.replace(/\D/g, '');
+  
+  // Basic length check
   if (digitsOnly.length < 10 || digitsOnly.length > 15) return null;
-  if (digitsOnly.match(/^0+$|^1+$|^2+$/)) return null;
+  
+  // Filter out obvious non-phone patterns
+  if (digitsOnly.match(/^0+$|^1+$|^2+$|^9+$/)) return null;
   if (digitsOnly.includes('000') || digitsOnly.includes('111')) return null;
+  
+  // Filter out sequential numbers (likely IDs, not phones)
+  if (digitsOnly.match(/123456|234567|345678|456789|567890|678901|789012|890123|901234/)) return null;
+  
+  // Filter out repeated patterns (likely IDs)
+  if (digitsOnly.match(/(\d)\1{6,}/)) return null; // 7+ repeated digits
+  
+  // Filter out numbers that look like timestamps, IDs, or financial data
+  if (digitsOnly.length === 10 && digitsOnly.startsWith('20')) return null; // Likely year-based
+  if (digitsOnly.length > 12 && digitsOnly.startsWith('1')) return null; // Likely timestamp
+  
+  // Must have reasonable phone structure for long numbers
+  if (digitsOnly.length > 11) {
+    // International numbers should start with country code patterns
+    const validCountryCodes = ['1', '44', '33', '49', '39', '34', '31', '32', '41', '43', '45', '46', '47', '48', '91', '86', '81', '82', '61', '64'];
+    const hasValidCountryCode = validCountryCodes.some(code => digitsOnly.startsWith(code));
+    if (!hasValidCountryCode) return null;
+  }
+  
   return cleaned;
 }
 
