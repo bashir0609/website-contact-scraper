@@ -49,6 +49,7 @@ export default async function handler(req, res) {
   const apiKey = process.env.REACT_APP_API_NINJAS_KEY;
   if (!apiKey) return res.status(500).json({ message: 'API key not configured on server.' });
 
+  console.log(`🔍 Scraping: ${url}`);
   const apiEndpoint = `https://api.api-ninjas.com/v1/webscraper?url=${encodeURIComponent(url)}`;
 
   try {
@@ -64,6 +65,7 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
+      console.error(`❌ API Error for ${url}:`, data.error);
       return res.status(response.status).json({
         message: data.error || 'API Error',
         generalEmails: [],
@@ -76,6 +78,7 @@ export default async function handler(req, res) {
 
     const htmlContent = data.data;
     if (!htmlContent) {
+      console.log(`⚠️  No HTML content for ${url}`);
       return res.status(200).json({
         generalEmails: [],
         generalPhones: [],
@@ -91,9 +94,8 @@ export default async function handler(req, res) {
     const generalPhones = new Set();
     const contactForms = new Set();
 
-    // Social media links object (each is an array, supports multiple links)
-    const socialLinks = {};
-    SOCIAL_PLATFORMS.forEach(p => socialLinks[p] = []);
+    // Initialize social media object properly
+    const socialMedia = getEmptySocialMedia();
 
     // Find contact forms
     $('form').each((i, form) => {
@@ -116,22 +118,51 @@ export default async function handler(req, res) {
       }
     });
 
-    // Find people cards
+    // Enhanced people detection with better name extraction
     $('body').find('*').each((i, el) => {
       const element = $(el);
       const elementText = element.text();
-      if (elementText.length > 500) return;
+      if (elementText.length > 500) return; // Skip very large elements
 
       const hasEmailLink = element.find('a[href^="mailto:"]').length > 0;
       const hasPhoneLink = element.find('a[href^="tel:"]').length > 0;
       const hasEmailText = emailRegex.test(elementText);
       const hasPhoneText = phoneRegex.test(elementText) || phoneRegex2.test(elementText);
 
+      // Look for person cards that have both email and phone info
       if ((hasEmailLink || hasEmailText) && (hasPhoneLink || hasPhoneText)) {
-        let name = element.find('h1, h2, h3, h4, h5, h6').first().text().trim();
-        if (!name) name = element.find('strong, b, .name, .title, .person-name').first().text().trim();
-        if (!name) name = element.find('p').first().text().split(/[,\n]/)[0].trim();
+        // Try multiple strategies to find the person's name
+        let name = '';
+        
+        // Strategy 1: Look for heading tags
+        const headingText = element.find('h1, h2, h3, h4, h5, h6').first().text().trim();
+        if (headingText && headingText.length < 50) {
+          name = headingText;
+        }
+        
+        // Strategy 2: Look for common name classes
+        if (!name) {
+          const nameElements = element.find('.name, .person-name, .staff-name, .team-member-name, .employee-name, strong, b').first();
+          if (nameElements.length) {
+            const nameText = nameElements.text().trim();
+            if (nameText && nameText.length < 50) {
+              name = nameText;
+            }
+          }
+        }
+        
+        // Strategy 3: Look in first paragraph, split by common delimiters
+        if (!name) {
+          const firstParagraph = element.find('p').first().text().trim();
+          if (firstParagraph) {
+            const possibleName = firstParagraph.split(/[,\n|•·]/)[0].trim();
+            if (possibleName && possibleName.length < 50 && !possibleName.includes('@')) {
+              name = possibleName;
+            }
+          }
+        }
 
+        // Extract emails
         const personEmails = [];
         if (hasEmailLink) {
           element.find('a[href^="mailto:"]').each((j, emailEl) => {
@@ -145,6 +176,7 @@ export default async function handler(req, res) {
           if (cleaned && !personEmails.includes(cleaned)) personEmails.push(cleaned);
         });
 
+        // Extract phones
         const personPhones = [];
         if (hasPhoneLink) {
           element.find('a[href^="tel:"]').each((j, phoneEl) => {
@@ -166,6 +198,7 @@ export default async function handler(req, res) {
           }
         });
 
+        // Only add if we found both emails and phones
         if (personEmails.length > 0 && personPhones.length > 0) {
           people.push({
             name: name || 'Name not found',
@@ -176,11 +209,11 @@ export default async function handler(req, res) {
       }
     });
 
-    // Deduplicate people by name+email+phone
+    // Deduplicate people by name+email combination
     const uniquePeople = [];
     const seenPeople = new Set();
     for (const person of people) {
-      const key = `${person.name}|${person.emails.join(',')}|${person.phones.join(',')}`;
+      const key = `${person.name.toLowerCase()}|${person.emails.join(',').toLowerCase()}`;
       if (!seenPeople.has(key)) {
         uniquePeople.push(person);
         seenPeople.add(key);
@@ -192,26 +225,55 @@ export default async function handler(req, res) {
       const href = $(el).attr('href');
       if (!href) return;
 
-      // Social media
+      // Social media detection - Fixed to use proper object structure
       SOCIAL_PLATFORMS.forEach(platform => {
-        if (href.includes(`${platform}.com`)) {
-          const abs = getAbsoluteUrl(href, url);
-          if (abs && !socialLinks[platform].includes(abs)) {
-            socialLinks[platform].push(abs);
+        if (href.includes(`${platform}.com`) || href.includes(`${platform}.co`)) {
+          const absoluteUrl = getAbsoluteUrl(href, url);
+          if (absoluteUrl && !socialMedia[platform].includes(absoluteUrl)) {
+            socialMedia[platform].push(absoluteUrl);
+            console.log(`📱 Found ${platform}: ${absoluteUrl}`);
           }
         }
       });
 
-      // Emails
+      // General email links
       if (href.startsWith('mailto:')) {
         const email = cleanEmail(href.replace('mailto:', ''));
-        if (email) generalEmails.add(email);
+        if (email) {
+          generalEmails.add(email);
+        }
       }
 
-      // Phones
+      // General phone links
       if (href.startsWith('tel:')) {
         const phone = cleanPhone(href.replace('tel:', ''));
-        if (phone) generalPhones.add(phone);
+        if (phone) {
+          generalPhones.add(phone);
+        }
+      }
+    });
+
+    // Also search for emails and phones in plain text
+    const bodyText = $('body').text();
+    
+    // Find additional emails in text
+    const textEmails = bodyText.match(emailRegex) || [];
+    textEmails.forEach(email => {
+      const cleaned = cleanEmail(email);
+      if (cleaned) {
+        generalEmails.add(cleaned);
+      }
+    });
+
+    // Find additional phones in text
+    const textPhones = [
+      ...(bodyText.match(phoneRegex) || []),
+      ...(bodyText.match(phoneRegex2) || [])
+    ];
+    textPhones.forEach(phone => {
+      const cleaned = cleanPhone(phone);
+      if (cleaned) {
+        generalPhones.add(cleaned);
       }
     });
 
@@ -221,15 +283,21 @@ export default async function handler(req, res) {
     const finalGeneralEmails = [...generalEmails].filter(email => !peopleEmails.has(email));
     const finalGeneralPhones = [...generalPhones].filter(phone => !peoplePhones.has(phone));
 
-    res.json({
+    console.log(`✅ Scraping complete for ${url}: ${finalGeneralEmails.length} emails, ${finalGeneralPhones.length} phones, ${uniquePeople.length} people`);
+
+    // Return consistent structure
+    const result = {
       generalEmails: finalGeneralEmails,
       generalPhones: finalGeneralPhones,
-      socialMedia: socialLinks, // Each platform is an array of URLs
+      socialMedia: socialMedia, // Now properly structured as object with arrays
       contactForms: [...contactForms],
       people: uniquePeople
-    });
+    };
+
+    res.json(result);
 
   } catch (error) {
+    console.error(`❌ Server error for ${url}:`, error);
     res.status(500).json({
       message: 'Server error',
       error: error.message,
