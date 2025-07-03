@@ -5,6 +5,16 @@ import { exportToCSV } from '../utils/csvExportUtils';
 import CsvUpload from '../components/CsvUpload';
 import ScraperUI from '../components/ScraperUI';
 
+const SOCIAL_PLATFORMS = [
+  'linkedin', 'facebook', 'twitter', 'instagram', 'youtube', 'tiktok', 'pinterest'
+];
+
+function getEmptySocialMedia() {
+  const obj = {};
+  SOCIAL_PLATFORMS.forEach(p => obj[p] = []);
+  return obj;
+}
+
 export default function Home() {
   // --- State Management ---
   const [mode, setMode] = useState('single');
@@ -76,7 +86,7 @@ export default function Home() {
       let aggregatedResults = {
         generalEmails: new Set(),
         generalPhones: new Set(),
-        socialMedia: new Set(),
+        socialMedia: getEmptySocialMedia(), // Fixed: Initialize as object with arrays
         contactForms: new Set(),
         people: []
       };
@@ -94,11 +104,38 @@ export default function Home() {
         } else {
           totalScrapedPages++;
           
-          if (homepageData.generalEmails) homepageData.generalEmails.forEach(e => aggregatedResults.generalEmails.add(e));
-          if (homepageData.generalPhones) homepageData.generalPhones.forEach(p => aggregatedResults.generalPhones.add(p));
-          if (homepageData.socialMedia) homepageData.socialMedia.forEach(s => aggregatedResults.socialMedia.add(s));
-          if (homepageData.contactForms) homepageData.contactForms.forEach(f => aggregatedResults.contactForms.add(f));
-          if (homepageData.people) aggregatedResults.people.push(...homepageData.people);
+          // Process emails
+          if (homepageData.generalEmails && Array.isArray(homepageData.generalEmails)) {
+            homepageData.generalEmails.forEach(e => aggregatedResults.generalEmails.add(e));
+          }
+          
+          // Process phones
+          if (homepageData.generalPhones && Array.isArray(homepageData.generalPhones)) {
+            homepageData.generalPhones.forEach(p => aggregatedResults.generalPhones.add(p));
+          }
+          
+          // Process social media - Fixed logic
+          if (homepageData.socialMedia && typeof homepageData.socialMedia === 'object') {
+            SOCIAL_PLATFORMS.forEach(platform => {
+              if (homepageData.socialMedia[platform] && Array.isArray(homepageData.socialMedia[platform])) {
+                homepageData.socialMedia[platform].forEach(link => {
+                  if (!aggregatedResults.socialMedia[platform].includes(link)) {
+                    aggregatedResults.socialMedia[platform].push(link);
+                  }
+                });
+              }
+            });
+          }
+          
+          // Process contact forms
+          if (homepageData.contactForms && Array.isArray(homepageData.contactForms)) {
+            homepageData.contactForms.forEach(f => aggregatedResults.contactForms.add(f));
+          }
+          
+          // Process people
+          if (homepageData.people && Array.isArray(homepageData.people)) {
+            aggregatedResults.people.push(...homepageData.people);
+          }
           
           console.log(`📊 Homepage results: ${homepageData.generalEmails?.length || 0} emails, ${homepageData.generalPhones?.length || 0} phones, ${homepageData.people?.length || 0} people`);
         }
@@ -187,26 +224,39 @@ export default function Home() {
           
           let newContactsFound = 0;
           
+          // Process emails
           if (data.generalEmails && Array.isArray(data.generalEmails)) {
             const beforeSize = aggregatedResults.generalEmails.size;
             data.generalEmails.forEach(email => aggregatedResults.generalEmails.add(email));
             newContactsFound += aggregatedResults.generalEmails.size - beforeSize;
           }
           
+          // Process phones
           if (data.generalPhones && Array.isArray(data.generalPhones)) {
             const beforeSize = aggregatedResults.generalPhones.size;
             data.generalPhones.forEach(phone => aggregatedResults.generalPhones.add(phone));
             newContactsFound += aggregatedResults.generalPhones.size - beforeSize;
           }
           
-          if (data.socialMedia && Array.isArray(data.socialMedia)) {
-            data.socialMedia.forEach(social => aggregatedResults.socialMedia.add(social));
+          // Process social media - Fixed logic
+          if (data.socialMedia && typeof data.socialMedia === 'object') {
+            SOCIAL_PLATFORMS.forEach(platform => {
+              if (data.socialMedia[platform] && Array.isArray(data.socialMedia[platform])) {
+                data.socialMedia[platform].forEach(link => {
+                  if (!aggregatedResults.socialMedia[platform].includes(link)) {
+                    aggregatedResults.socialMedia[platform].push(link);
+                  }
+                });
+              }
+            });
           }
           
+          // Process contact forms
           if (data.contactForms && Array.isArray(data.contactForms)) {
             data.contactForms.forEach(form => aggregatedResults.contactForms.add(form));
           }
           
+          // Process people
           if (data.people && Array.isArray(data.people)) {
             data.people.forEach(person => {
               const existingPerson = aggregatedResults.people.find(existing => 
@@ -236,7 +286,7 @@ export default function Home() {
         ...domainInfo,
         generalEmails: [...aggregatedResults.generalEmails],
         generalPhones: [...aggregatedResults.generalPhones],
-        socialMedia: [...aggregatedResults.socialMedia],
+        socialMedia: aggregatedResults.socialMedia, // Now properly structured as object with arrays
         contactForms: [...aggregatedResults.contactForms],
         people: aggregatedResults.people,
         pagesScraped: totalScrapedPages,
@@ -254,7 +304,7 @@ export default function Home() {
         error: `Comprehensive scraping failed: ${error.message}`,
         generalEmails: [],
         generalPhones: [],
-        socialMedia: [],
+        socialMedia: getEmptySocialMedia(),
         contactForms: [],
         people: []
       };
