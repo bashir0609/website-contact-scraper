@@ -239,19 +239,22 @@ const ScraperUI = ({
                           <p><strong>Phones:</strong> {result.phones.join(', ') || 'None found'}</p>
                         )}
                         {result.socialMedia && Object.keys(result.socialMedia).length > 0 && (
-                          <div>
-                            <strong>Social Media:</strong>
-                            <ul>
-                              {Object.entries(result.socialMedia).map(([platform, links]) =>
-                                links && links.length > 0 ? (
-                                  <li key={platform}>
-                                    {platform.charAt(0).toUpperCase() + platform.slice(1)}: {links.join(', ')}
-                                  </li>
-                                ) : null
-                              )}
-                            </ul>
-                          </div>
-                        )}
+                            <div className="mt-2">
+                              <strong>Social Media:</strong>
+                              <ul className="ml-4">
+                                {Object.entries(result.socialMedia).map(([platform, links]) =>
+                                  links && links.length > 0 ? (
+                                    <li key={platform}>
+                                      <span className="font-semibold">{platform.charAt(0).toUpperCase() + platform.slice(1)}:</span>{" "}
+                                      {links.join(', ')}
+                                    </li>
+                                  ): null
+                                )}
+                              </ul>
+                            </div>
+                          )
+                      }
+
 
                         {result.contactForms && result.contactForms.length > 0 && (
                           <div className="mt-2">
