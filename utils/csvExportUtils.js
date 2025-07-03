@@ -39,11 +39,11 @@ export const exportToCSV = (results) => {
 
     // Socials
     SOCIAL_PLATFORMS.forEach(platform => {
-      row[platform.charAt(0).toUpperCase() + platform.slice(1)] = Array.isArray(result.socialMedia?.[platform]) && result.socialMedia[platform].length > 0
-        ? result.socialMedia[platform][0]
-        : '';
+      row[platform.charAt(0).toUpperCase() + platform.slice(1)] =
+        Array.isArray(result.socialMedia?.[platform]) && result.socialMedia[platform].length > 0
+          ? result.socialMedia[platform][0]
+          : '';
     });
-
 
     // Contact Forms
     for (let i = 0; i < 2; i++) {
