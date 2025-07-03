@@ -38,6 +38,80 @@ function cleanPhone(phone) {
   return cleaned;
 }
 
+// Enhanced function to detect if an email likely belongs to a person
+function isPersonalEmail(email) {
+  if (!email || typeof email !== 'string') return false;
+  
+  const localPart = email.split('@')[0].toLowerCase();
+  
+  // Patterns that suggest personal emails
+  const personalPatterns = [
+    /^[a-z]+\.[a-z]+$/,           // firstname.lastname
+    /^[a-z]+[a-z]$/,              // firstnamelastname  
+    /^[a-z]\.[a-z]+$/,            // f.lastname
+    /^[a-z]+\.[a-z]$/,            // firstname.l
+    /^[a-z]+_[a-z]+$/,            // firstname_lastname
+    /^[a-z]+-[a-z]+$/,            // firstname-lastname
+  ];
+  
+  // Generic patterns that suggest non-personal emails
+  const genericPatterns = [
+    /^(info|contact|support|help|admin|sales|marketing|media|press)$/,
+    /^(service|customer|general|main|office|reception|team)$/,
+    /^(investor|corporate|legal|hr|careers|jobs)$/,
+    /relations$/,
+    /^no-?reply/,
+    /^do-?not-?reply/
+  ];
+  
+  // Check if it matches personal patterns
+  const isPersonal = personalPatterns.some(pattern => pattern.test(localPart));
+  
+  // Check if it matches generic patterns
+  const isGeneric = genericPatterns.some(pattern => pattern.test(localPart));
+  
+  return isPersonal && !isGeneric;
+}
+
+// Extract potential name from email
+function extractNameFromEmail(email) {
+  if (!email) return null;
+  
+  const localPart = email.split('@')[0];
+  
+  // Handle firstname.lastname pattern
+  if (localPart.includes('.')) {
+    const parts = localPart.split('.');
+    if (parts.length === 2) {
+      const firstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const lastName = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+      return `${firstName} ${lastName}`;
+    }
+  }
+  
+  // Handle firstname_lastname pattern
+  if (localPart.includes('_')) {
+    const parts = localPart.split('_');
+    if (parts.length === 2) {
+      const firstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const lastName = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+      return `${firstName} ${lastName}`;
+    }
+  }
+  
+  // Handle firstname-lastname pattern
+  if (localPart.includes('-')) {
+    const parts = localPart.split('-');
+    if (parts.length === 2) {
+      const firstName = parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
+      const lastName = parts[1].charAt(0).toUpperCase() + parts[1].slice(1);
+      return `${firstName} ${lastName}`;
+    }
+  }
+  
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
@@ -90,8 +164,8 @@ export default async function handler(req, res) {
 
     const $ = cheerio.load(htmlContent);
     const people = [];
-    const generalEmails = new Set();
-    const generalPhones = new Set();
+    const allEmails = new Set();
+    const allPhones = new Set();
     const contactForms = new Set();
 
     // Initialize social media object properly
@@ -118,7 +192,7 @@ export default async function handler(req, res) {
       }
     });
 
-    // Enhanced people detection with better name extraction
+    // ENHANCED PERSON DETECTION - Look for person cards/sections first
     $('body').find('*').each((i, el) => {
       const element = $(el);
       const elementText = element.text();
@@ -136,7 +210,7 @@ export default async function handler(req, res) {
         
         // Strategy 1: Look for heading tags
         const headingText = element.find('h1, h2, h3, h4, h5, h6').first().text().trim();
-        if (headingText && headingText.length < 50) {
+        if (headingText && headingText.length < 50 && !headingText.includes('@')) {
           name = headingText;
         }
         
@@ -145,7 +219,7 @@ export default async function handler(req, res) {
           const nameElements = element.find('.name, .person-name, .staff-name, .team-member-name, .employee-name, strong, b').first();
           if (nameElements.length) {
             const nameText = nameElements.text().trim();
-            if (nameText && nameText.length < 50) {
+            if (nameText && nameText.length < 50 && !nameText.includes('@')) {
               name = nameText;
             }
           }
@@ -162,7 +236,7 @@ export default async function handler(req, res) {
           }
         }
 
-        // Extract emails
+        // Extract emails from this element
         const personEmails = [];
         if (hasEmailLink) {
           element.find('a[href^="mailto:"]').each((j, emailEl) => {
@@ -176,7 +250,7 @@ export default async function handler(req, res) {
           if (cleaned && !personEmails.includes(cleaned)) personEmails.push(cleaned);
         });
 
-        // Extract phones
+        // Extract phones from this element
         const personPhones = [];
         if (hasPhoneLink) {
           element.find('a[href^="tel:"]').each((j, phoneEl) => {
@@ -209,87 +283,119 @@ export default async function handler(req, res) {
       }
     });
 
-    // Deduplicate people by name+email combination
-    const uniquePeople = [];
-    const seenPeople = new Set();
-    for (const person of people) {
-      const key = `${person.name.toLowerCase()}|${person.emails.join(',').toLowerCase()}`;
-      if (!seenPeople.has(key)) {
-        uniquePeople.push(person);
-        seenPeople.add(key);
-      }
-    }
-
-    // Find general contacts and social links
+    // COLLECT ALL EMAILS AND PHONES from the page
     $('body').find('a[href]').each((i, el) => {
       const href = $(el).attr('href');
       if (!href) return;
 
-      // Social media detection - Fixed to use proper object structure
+      // Social media detection
       SOCIAL_PLATFORMS.forEach(platform => {
         if (href.includes(`${platform}.com`) || href.includes(`${platform}.co`)) {
           const absoluteUrl = getAbsoluteUrl(href, url);
           if (absoluteUrl && !socialMedia[platform].includes(absoluteUrl)) {
             socialMedia[platform].push(absoluteUrl);
-            console.log(`📱 Found ${platform}: ${absoluteUrl}`);
           }
         }
       });
 
-      // General email links
+      // Email links
       if (href.startsWith('mailto:')) {
         const email = cleanEmail(href.replace('mailto:', ''));
-        if (email) {
-          generalEmails.add(email);
-        }
+        if (email) allEmails.add(email);
       }
 
-      // General phone links
+      // Phone links
       if (href.startsWith('tel:')) {
         const phone = cleanPhone(href.replace('tel:', ''));
-        if (phone) {
-          generalPhones.add(phone);
-        }
+        if (phone) allPhones.add(phone);
       }
     });
 
     // Also search for emails and phones in plain text
     const bodyText = $('body').text();
     
-    // Find additional emails in text
+    // Find emails in text
     const textEmails = bodyText.match(emailRegex) || [];
     textEmails.forEach(email => {
       const cleaned = cleanEmail(email);
-      if (cleaned) {
-        generalEmails.add(cleaned);
-      }
+      if (cleaned) allEmails.add(cleaned);
     });
 
-    // Find additional phones in text
+    // Find phones in text
     const textPhones = [
       ...(bodyText.match(phoneRegex) || []),
       ...(bodyText.match(phoneRegex2) || [])
     ];
     textPhones.forEach(phone => {
       const cleaned = cleanPhone(phone);
-      if (cleaned) {
-        generalPhones.add(cleaned);
+      if (cleaned) allPhones.add(cleaned);
+    });
+
+    // SMART EMAIL CATEGORIZATION
+    const peopleEmails = new Set();
+    const peoplePhones = new Set();
+    const inferredPeople = [];
+    
+    // Collect emails/phones already assigned to detected people
+    people.forEach(person => {
+      person.emails.forEach(email => peopleEmails.add(email));
+      person.phones.forEach(phone => peoplePhones.add(phone));
+    });
+
+    // ANALYZE REMAINING EMAILS for potential people
+    const remainingEmails = [...allEmails].filter(email => !peopleEmails.has(email));
+    
+    remainingEmails.forEach(email => {
+      if (isPersonalEmail(email)) {
+        const nameFromEmail = extractNameFromEmail(email);
+        if (nameFromEmail) {
+          // This looks like a personal email, create a person entry
+          inferredPeople.push({
+            name: nameFromEmail,
+            emails: [email],
+            phones: [], // No phone associated
+            source: 'email_inference'
+          });
+          peopleEmails.add(email);
+        }
       }
     });
 
-    // Remove duplicates: exclude people emails/phones from general
-    const peopleEmails = new Set(uniquePeople.flatMap(p => p.emails));
-    const peoplePhones = new Set(uniquePeople.flatMap(p => p.phones));
-    const finalGeneralEmails = [...generalEmails].filter(email => !peopleEmails.has(email));
-    const finalGeneralPhones = [...generalPhones].filter(phone => !peoplePhones.has(phone));
+    // Combine detected people with inferred people
+    const allPeople = [...people, ...inferredPeople];
 
-    console.log(`✅ Scraping complete for ${url}: ${finalGeneralEmails.length} emails, ${finalGeneralPhones.length} phones, ${uniquePeople.length} people`);
+    // Deduplicate people by email
+    const uniquePeople = [];
+    const seenEmails = new Set();
+    
+    allPeople.forEach(person => {
+      const hasNewEmail = person.emails.some(email => !seenEmails.has(email));
+      if (hasNewEmail) {
+        uniquePeople.push(person);
+        person.emails.forEach(email => seenEmails.add(email));
+      }
+    });
+
+    // FINAL CATEGORIZATION
+    const finalPeopleEmails = new Set();
+    const finalPeoplePhones = new Set();
+    
+    uniquePeople.forEach(person => {
+      person.emails.forEach(email => finalPeopleEmails.add(email));
+      person.phones.forEach(phone => finalPeoplePhones.add(phone));
+    });
+
+    // General emails/phones are those NOT assigned to people
+    const generalEmails = [...allEmails].filter(email => !finalPeopleEmails.has(email));
+    const generalPhones = [...allPhones].filter(phone => !finalPeoplePhones.has(phone));
+
+    console.log(`✅ Scraping complete for ${url}: ${generalEmails.length} general emails, ${generalPhones.length} general phones, ${uniquePeople.length} people (${people.length} detected + ${inferredPeople.length} inferred)`);
 
     // Return consistent structure
     const result = {
-      generalEmails: finalGeneralEmails,
-      generalPhones: finalGeneralPhones,
-      socialMedia: socialMedia, // Now properly structured as object with arrays
+      generalEmails: generalEmails,
+      generalPhones: generalPhones,
+      socialMedia: socialMedia,
       contactForms: [...contactForms],
       people: uniquePeople
     };
