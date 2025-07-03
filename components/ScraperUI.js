@@ -238,9 +238,21 @@ const ScraperUI = ({
                         {result.phones && (
                           <p><strong>Phones:</strong> {result.phones.join(', ') || 'None found'}</p>
                         )}
-                        {result.socialMedia && result.socialMedia.length > 0 && (
-                          <p><strong>Social Media:</strong> {result.socialMedia.join(', ')}</p>
+                        {result.socialMedia && Object.keys(result.socialMedia).length > 0 && (
+                          <div>
+                            <strong>Social Media:</strong>
+                            <ul>
+                              {Object.entries(result.socialMedia).map(([platform, links]) =>
+                                links && links.length > 0 ? (
+                                  <li key={platform}>
+                                    {platform.charAt(0).toUpperCase() + platform.slice(1)}: {links.join(', ')}
+                                  </li>
+                                ) : null
+                              )}
+                            </ul>
+                          </div>
                         )}
+
                         {result.contactForms && result.contactForms.length > 0 && (
                           <div className="mt-2">
                             <strong>Contact Forms:</strong>
