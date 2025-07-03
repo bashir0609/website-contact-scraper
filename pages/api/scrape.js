@@ -64,7 +64,14 @@ export default async function handler(req, res) {
     const data = await response.json();
 
     if (!response.ok) {
-      return res.status(response.status).json({ message: data.error || 'API Error' });
+      return res.status(response.status).json({
+        message: data.error || 'API Error',
+        generalEmails: [],
+        generalPhones: [],
+        socialMedia: getEmptySocialMedia(),
+        contactForms: [],
+        people: []
+      });
     }
 
     const htmlContent = data.data;
